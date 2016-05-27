@@ -9,7 +9,7 @@ import operator
 
 data = []
 #first open json file
-with open("mood_app_dump_5_18.json") as json_file:
+with open("mood_app_dump_5_25.json") as json_file:
 	data = json.load(json_file)
 #load json into a dict
 print(len(data))
@@ -39,8 +39,15 @@ numPerRating = [0,0,0,0,0,0,0,0,0,0,0]
 local_timezone = timezone('America/Chicago')
 utc = pytz.utc
 moods = {}
+weekMoods = {}
+weekNums = {}
+
+last_date = datetime.strptime('05-18-2016','%m-%d-%Y').replace(tzinfo=local_timezone)
+print(last_date)
+
 #then create a file(tab delimited) that will hold the data
-with open("compiled_data_5_18.dsv", 'w') as outFile:
+weekFile = open("week_entries_26th.dsv", 'w')
+with open("compiled_data_5_25.dsv", 'w') as outFile:
 	#first pull each value into a var
 	for date, details in filteredEntries.items():
 		starRating = details['theirRating']
@@ -57,11 +64,23 @@ with open("compiled_data_5_18.dsv", 'w') as outFile:
 		local_time = utc_time.replace(tzinfo=pytz.utc).astimezone(local_timezone)
 		fixedDate = str(local_time.strftime('%m-%d-%Y %H:%M'))
 		outFile.write(fixedDate + '\t' + str(starRating) + '\t' + str(numRating) + '\t' + mood + '\n')
+
+		if(local_time > last_date):
+			if(mood in weekMoods.keys()):
+				weekMoods[mood] += 1
+			else:
+				weekMoods[mood] = 1
+			if(numRating in weekNums.keys()):
+				weekNums[numRating] += 1
+			else:
+				weekNums[numRating] = 1
+			weekFile.write(fixedDate + '\t' + str(numRating) + '\t' + mood + '\n')
 	#if the description tab cannot be parsed to a number, then disregard that line (will eliminate the old entries for now)
 		#into a list, 0-10 (size of 11) add 1 to whatever number it is
 		#next convert the timestamp into CST timestamp that's more readable (a string basically)
 		#write the line like so: timestamp tab rating_value tab description tab mood_name
 
+weekFile.close()
 #print out total number of entries
 #just for funsies, print out the total number of each description number
 for index, num in enumerate(numPerRating):
@@ -70,3 +89,9 @@ for index, num in enumerate(numPerRating):
 sorted_moods = sorted(moods.items(), key=operator.itemgetter(1))
 for i, (a,b) in enumerate(sorted_moods):
 	print("Mood of " + a + ' was given ' + str(b) + ' times.')
+
+for mood, numTimes in weekMoods.items():
+	print(mood + '\t' + str(numTimes))
+
+for rating, numTimes in weekNums.items():
+	print(str(rating) + '\t' + str(numTimes))
