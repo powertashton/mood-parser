@@ -1,4 +1,4 @@
-This is MoodParser
+This is MoodParse is a test line.
 
 This is a tool to parse a file of JSON that is pulled from Moodtrack Diary, since it doesn't provide exports.
 It then creates a .dsv file (tab delimited) of the creation timestamp, the mood, the star rating, 
