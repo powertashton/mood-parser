@@ -1,21 +1,23 @@
 import json
+from datetime import date
 from datetime import datetime
 from pytz import timezone
 import pytz
 import operator
-
+import sys
 
 ## This is a MoodParser for Moodtrack Diary JSON data ##
+## sys.argv[1] contains the date to start from
+## currently the date to end with is the last entry's date and time.
 
+dateStr = str(date.today().strftime('%m_%d_%Y'))
 data = []
-#first open json file
-with open("mood_app_dump_5_25.json") as json_file:
+
+#first open json file that contains the entries data pulled from the site and load into dict
+with open("mood_app_dump_" + dateStr + ".json") as json_file:
 	data = json.load(json_file)
-#load json into a dict
-print(len(data))
-print(data[0])
-#loop through dict and pull out just the rating_value, the description, the posted_at timestamp (which is 5 hours ahead: UTC time), and the mood_name
-	#stick these into a dict and stick that into a dict with the timestamp as the key
+
+#loop through dict and pull out just the rating_value, the description, the posted_at timestamp (which is 5 hours ahead of CST: UTC time), and the mood_name
 filteredEntries = {}
 skipCount = 0
 for entry in data:
@@ -23,6 +25,8 @@ for entry in data:
 	theirRating = entry['rating_value']
 	mood = entry['mood_name']
 	description = entry['description']
+
+	#current mode of entry depends on the description containing only an int, otherwise skip the entry
 	try:
 		myRating = int(description)
 		filteredEntries[date] = {'theirRating': theirRating, 'mood': mood, 'myRating': myRating}
@@ -36,18 +40,24 @@ print('This is the number of filtered entries: ' + str(len(filteredEntries)))
 
 numPerRating = [0,0,0,0,0,0,0,0,0,0,0]
 
+#my timezone is CST, hardcoded currently
 local_timezone = timezone('America/Chicago')
 utc = pytz.utc
 moods = {}
 weekMoods = {}
 weekNums = {}
 
-last_date = datetime.strptime('05-18-2016','%m-%d-%Y').replace(tzinfo=local_timezone)
+last_date = datetime.strptime(sys.argv[1],'%m-%d-%Y').replace(tzinfo=local_timezone)
 print(last_date)
 
-#then create a file(tab delimited) that will hold the data
-weekFile = open("week_entries_26th.dsv", 'w')
-with open("compiled_data_5_25.dsv", 'w') as outFile:
+#create a file just for the week (or time period since the start date passed in)
+weekFile = open("week_entries_" + dateStr + ".dsv", 'w')
+
+#create a file for all filtered entry data, tab-delimited
+#additionally counts the moods and the ratings (not the star rating, but the number pulled from the description)
+#converts the time to CST from UTC
+#writes to the all file everytime and if the entry's date is after the start date then writes to the weekFile as well.
+with open("compiled_data_" + dateStr + ".dsv", 'w') as outFile:
 	#first pull each value into a var
 	for date, details in filteredEntries.items():
 		starRating = details['theirRating']
@@ -75,21 +85,18 @@ with open("compiled_data_5_25.dsv", 'w') as outFile:
 			else:
 				weekNums[numRating] = 1
 			weekFile.write(fixedDate + '\t' + str(numRating) + '\t' + mood + '\n')
-	#if the description tab cannot be parsed to a number, then disregard that line (will eliminate the old entries for now)
-		#into a list, 0-10 (size of 11) add 1 to whatever number it is
-		#next convert the timestamp into CST timestamp that's more readable (a string basically)
-		#write the line like so: timestamp tab rating_value tab description tab mood_name
-
 weekFile.close()
-#print out total number of entries
+
 #just for funsies, print out the total number of each description number
 for index, num in enumerate(numPerRating):
 	print(str(index) + ' given ' + str(num) + ' times.\n')
 
+#print out the count for each mood specified
 sorted_moods = sorted(moods.items(), key=operator.itemgetter(1))
 for i, (a,b) in enumerate(sorted_moods):
 	print("Mood of " + a + ' was given ' + str(b) + ' times.')
 
+#counts for mood and rating from last_date to last entry date.
 for mood, numTimes in weekMoods.items():
 	print(mood + '\t' + str(numTimes))
 
