@@ -5,36 +5,75 @@ from pytz import timezone
 import pytz
 import operator
 import sys
+import requests
 
 ## This is a MoodParser for Moodtrack Diary JSON data ##
 ## sys.argv[1] contains the date to start from
 ## currently the date to end with is the last entry's date and time.
 
+props = {}
+
+def storeProps(propFile):
+	with open(propFile) as f:
+		for line in f:
+			if '=' in line:
+				# Find the name and value by splitting the string
+				name, value = line.split("=", 1)
+				# Assign key value pair to dict
+				# strip() removes white space from the ends of strings
+				props[name.strip()] = value.strip()
+	print(props)
+
+def fetchEntries():
+	headers = {"Referer": props["REFERER_URL"], "Auth-Token": props["AUTH_TOKEN"]} 
+	r= requests.get(props["ENTRIES_URL"], headers=headers)
+	jsonObj = r.json()
+	return jsonObj
+
+storeProps("moodparse.properties")
 dateStr = str(date.today().strftime('%m_%d_%Y'))
-data = []
+data = fetchEntries()
 
 #first open json file that contains the entries data pulled from the site and load into dict
-with open("mood_app_dump_" + dateStr + ".json") as json_file:
-	data = json.load(json_file)
+# with open("mood_app_dump_" + dateStr + ".json") as json_file:
+# 	data = json.load(json_file)
 
 #loop through dict and pull out just the rating_value, the description, the posted_at timestamp (which is 5 hours ahead of CST: UTC time), and the mood_name
 filteredEntries = {}
 skipCount = 0
+skippedFile = open("skippedEntries.txt", 'w')
 for entry in data:
 	date = entry['posted_at']
 	theirRating = entry['rating_value']
 	mood = entry['mood_name']
 	description = entry['description']
 
-	#current mode of entry depends on the description containing only an int, otherwise skip the entry
+	#current mode of entry depends on the description containing only an int, otherwise try parsing the mood as an int (old way), otherwise skip
 	try:
 		myRating = int(description)
 		filteredEntries[date] = {'theirRating': theirRating, 'mood': mood, 'myRating': myRating}
 	except ValueError:
-		skipCount += 1
+		try:
+			myRating = int(mood)
+			filteredEntries[date] = {'theirRating': theirRating, 'mood': "N/A", 'myRating': myRating}
+		except ValueError:
+			skippedFile.write(str(date) + '\t' + str(theirRating) + '\t' + str(mood) + '\t' + str(description) + '\n')
+			skipCount += 1
+		except TypeError:
+			skippedFile.write(str(date) + '\t' + str(theirRating) + '\t' + str(mood) + '\t' + str(description) + '\n')
+			skipCount += 1
 	except TypeError:
-		skipCount += 1
+		try:
+			myRating = int(mood)
+			filteredEntries[date] = {'theirRating': theirRating, 'mood': "N/A", 'myRating': myRating}
+		except ValueError:
+			skippedFile.write(str(date) + '\t' + str(theirRating) + '\t' + str(mood) + '\t' + str(description) + '\n')
+			skipCount += 1
+		except TypeError:
+			skippedFile.write(str(date) + '\t' + str(theirRating) + '\t' + str(mood) + '\t' + str(description) + '\n')
+			skipCount += 1
 
+skippedFile.close()
 print("This is the skip count: " + str(skipCount))
 print('This is the number of filtered entries: ' + str(len(filteredEntries)))
 
