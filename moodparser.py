@@ -1,6 +1,6 @@
 import json
 from datetime import date
-from datetime import datetime
+from datetime import datetime, timedelta
 from pytz import timezone
 import pytz
 import operator
@@ -8,8 +8,8 @@ import sys
 import requests
 
 ## This is a MoodParser for Moodtrack Diary JSON data ##
-## sys.argv[1] contains the date to start from
-## currently the date to end with is the last entry's date and time.
+## sys.argv[1] contains the date to start from and sys.argv[2] the last date to include.
+## If not specified, the end date will be today's date.
 
 props = {}
 
@@ -32,16 +32,20 @@ def fetchEntries():
 
 storeProps("moodparse.properties")
 dateStr = str(date.today().strftime('%m_%d_%Y'))
+#my timezone is CST, hardcoded currently
+local_timezone = timezone('America/Chicago')
+utc = pytz.utc
 data = fetchEntries()
+endDate = date.today()
 
-#first open json file that contains the entries data pulled from the site and load into dict
-# with open("mood_app_dump_" + dateStr + ".json") as json_file:
-# 	data = json.load(json_file)
+if(len(sys.argv) == 3):
+	endDate = datetime.strptime(sys.argv[2],'%m-%d-%Y').replace(tzinfo=local_timezone)
+	print(endDate)
 
 #loop through dict and pull out just the rating_value, the description, the posted_at timestamp (which is 5 hours ahead of CST: UTC time), and the mood_name
 filteredEntries = {}
 skipCount = 0
-skippedFile = open("skippedEntries.txt", 'w')
+
 for entry in data:
 	date = entry['posted_at']
 	theirRating = entry['rating_value']
@@ -57,43 +61,34 @@ for entry in data:
 			myRating = int(mood)
 			filteredEntries[date] = {'theirRating': theirRating, 'mood': "N/A", 'myRating': myRating}
 		except ValueError:
-			skippedFile.write(str(date) + '\t' + str(theirRating) + '\t' + str(mood) + '\t' + str(description) + '\n')
 			skipCount += 1
 		except TypeError:
-			skippedFile.write(str(date) + '\t' + str(theirRating) + '\t' + str(mood) + '\t' + str(description) + '\n')
 			skipCount += 1
 	except TypeError:
 		try:
 			myRating = int(mood)
 			filteredEntries[date] = {'theirRating': theirRating, 'mood': "N/A", 'myRating': myRating}
 		except ValueError:
-			skippedFile.write(str(date) + '\t' + str(theirRating) + '\t' + str(mood) + '\t' + str(description) + '\n')
 			skipCount += 1
 		except TypeError:
-			skippedFile.write(str(date) + '\t' + str(theirRating) + '\t' + str(mood) + '\t' + str(description) + '\n')
 			skipCount += 1
 
-skippedFile.close()
 print("This is the skip count: " + str(skipCount))
 print('This is the number of filtered entries: ' + str(len(filteredEntries)))
 
 numPerRating = [0,0,0,0,0,0,0,0,0,0,0]
-
-#my timezone is CST, hardcoded currently
-local_timezone = timezone('America/Chicago')
-utc = pytz.utc
 moods = {}
 weekMoods = {}
 weekNums = {}
 
-last_date = datetime.strptime(sys.argv[1],'%m-%d-%Y').replace(tzinfo=local_timezone)
-print(last_date)
-
+startDate = datetime.strptime(sys.argv[1],'%m-%d-%Y').replace(tzinfo=local_timezone)
+print(startDate)
 #create a file just for the week (or time period since the start date passed in)
 weekFile = open("week_entries_" + dateStr + ".dsv", 'w')
 
+
 #create a file for all filtered entry data, tab-delimited
-#additionally counts the moods and the ratings (not the star rating, but the number pulled from the description)
+#additionally counts the moods and the ratings (not the star rating, but the number pulled from the description [or mood, depending on the entry format])
 #converts the time to CST from UTC
 #writes to the all file everytime and if the entry's date is after the start date then writes to the weekFile as well.
 with open("compiled_data_" + dateStr + ".dsv", 'w') as outFile:
@@ -108,13 +103,13 @@ with open("compiled_data_" + dateStr + ".dsv", 'w') as outFile:
 			moods[mood] += 1
 		else:
 			moods[mood] = 1
-
+		
 		utc_time = datetime.strptime(date[:len(date)-1], '%Y-%m-%dT%H:%M:%S')
 		local_time = utc_time.replace(tzinfo=pytz.utc).astimezone(local_timezone)
 		fixedDate = str(local_time.strftime('%m-%d-%Y %H:%M'))
 		outFile.write(fixedDate + '\t' + str(starRating) + '\t' + str(numRating) + '\t' + mood + '\n')
 
-		if(local_time > last_date):
+		if(local_time.date() >= startDate.date() and local_time.date() <= endDate.date()):
 			if(mood in weekMoods.keys()):
 				weekMoods[mood] += 1
 			else:
@@ -124,9 +119,10 @@ with open("compiled_data_" + dateStr + ".dsv", 'w') as outFile:
 			else:
 				weekNums[numRating] = 1
 			weekFile.write(fixedDate + '\t' + str(numRating) + '\t' + mood + '\n')
+			
 weekFile.close()
 
-#just for funsies, print out the total number of each description number
+#print out the total counts for each rating number
 for index, num in enumerate(numPerRating):
 	print(str(index) + ' given ' + str(num) + ' times.\n')
 
