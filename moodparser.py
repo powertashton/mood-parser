@@ -24,59 +24,84 @@ def storeProps(propFile):
 				props[name.strip()] = value.strip()
 	print(props)
 
-def fetchEntries():
-	headers = {"Referer": props["REFERER_URL"], "Auth-Token": props["AUTH_TOKEN"]} 
+def getToken():
+	URL = props["REFERER_URL"]
+	endPart = URL.split("com/",1)[1]
+	payload = {"code": props["CODE"]}
+	headers = {"Referer": URL, "Origin": "http://e.moodtrack.com"}
+	r = requests.post((props["REQUEST_URL"]+endPart), headers=headers, params=payload)
+	if("token" in r.json().keys()):
+		return r.json()["token"]
+	else:
+		return None
+
+def fetchEntries(token):
+	headers = {"Referer": props["REFERER_URL"], "Auth-Token": token} 
 	r= requests.get(props["ENTRIES_URL"], headers=headers)
 	jsonObj = r.json()
 	return jsonObj
 
+def parseEntries(filteredEntries):
+	skipCount = 0
+	for entry in data:
+		date = entry['posted_at']
+		theirRating = entry['rating_value']
+		mood = entry['mood_name']
+		description = entry['description']
+
+		#current mode of entry depends on the description containing only an int, otherwise try parsing the mood as an int (old way), otherwise skip
+		try:
+			myRating = int(description)
+			filteredEntries[date] = {'theirRating': theirRating, 'mood': mood, 'myRating': myRating}
+		except ValueError:
+			try:
+				myRating = int(mood)
+				filteredEntries[date] = {'theirRating': theirRating, 'mood': "N/A", 'myRating': myRating}
+			except ValueError:
+				skipCount += 1
+			except TypeError:
+				skipCount += 1
+		except TypeError:
+			try:
+				myRating = int(mood)
+				filteredEntries[date] = {'theirRating': theirRating, 'mood': "N/A", 'myRating': myRating}
+			except ValueError:
+				skipCount += 1
+			except TypeError:
+				skipCount += 1
+	return skipCount
+
+def printWeekCounts(items):
+	for item, numTimes in items.items():
+		print(str(item) + '\t' + str(numTimes))
+
 storeProps("moodparse.properties")
+
 dateStr = str(date.today().strftime('%m_%d_%Y'))
 #my timezone is CST, hardcoded currently
 local_timezone = timezone('America/Chicago')
 utc = pytz.utc
-data = fetchEntries()
 endDate = date.today()
-
 if(len(sys.argv) == 3):
 	endDate = datetime.strptime(sys.argv[2],'%m-%d-%Y').replace(tzinfo=local_timezone)
 	print(endDate)
 
+token = getToken()
+data = []
+if(token != None):
+	data = fetchEntries(getToken())
+else:
+	print("Unable to fetch data due to not finding authentication token.")
+
 #loop through dict and pull out just the rating_value, the description, the posted_at timestamp (which is 5 hours ahead of CST: UTC time), and the mood_name
 filteredEntries = {}
-skipCount = 0
+numSkipped = parseEntries(filteredEntries)
 
-for entry in data:
-	date = entry['posted_at']
-	theirRating = entry['rating_value']
-	mood = entry['mood_name']
-	description = entry['description']
-
-	#current mode of entry depends on the description containing only an int, otherwise try parsing the mood as an int (old way), otherwise skip
-	try:
-		myRating = int(description)
-		filteredEntries[date] = {'theirRating': theirRating, 'mood': mood, 'myRating': myRating}
-	except ValueError:
-		try:
-			myRating = int(mood)
-			filteredEntries[date] = {'theirRating': theirRating, 'mood': "N/A", 'myRating': myRating}
-		except ValueError:
-			skipCount += 1
-		except TypeError:
-			skipCount += 1
-	except TypeError:
-		try:
-			myRating = int(mood)
-			filteredEntries[date] = {'theirRating': theirRating, 'mood': "N/A", 'myRating': myRating}
-		except ValueError:
-			skipCount += 1
-		except TypeError:
-			skipCount += 1
-
-print("This is the skip count: " + str(skipCount))
+print("This is the skip count: " + str(numSkipped))
 print('This is the number of filtered entries: ' + str(len(filteredEntries)))
 
-numPerRating = [0,0,0,0,0,0,0,0,0,0,0]
+#numPerRating = [0,0,0,0,0,0,0,0,0,0,0]
+numPerRating = {}
 moods = {}
 weekMoods = {}
 weekNums = {}
@@ -96,7 +121,11 @@ with open("compiled_data_" + dateStr + ".dsv", 'w') as outFile:
 	for date, details in filteredEntries.items():
 		starRating = details['theirRating']
 		numRating = details['myRating']
-		numPerRating[numRating] += 1
+		if(numRating not in numPerRating.keys()):
+			numPerRating[numRating] = 1
+		else:
+			numPerRating[numRating] += 1
+		#numPerRating[numRating] += 1
 		mood = details['mood']
 
 		if(mood in moods.keys()):
@@ -123,8 +152,11 @@ with open("compiled_data_" + dateStr + ".dsv", 'w') as outFile:
 weekFile.close()
 
 #print out the total counts for each rating number
-for index, num in enumerate(numPerRating):
-	print(str(index) + ' given ' + str(num) + ' times.\n')
+# for index, num in enumerate(numPerRating):
+# 	print(str(index) + ' given ' + str(num) + ' times.\n')
+
+for rating, count in numPerRating.items():
+	print(str(rating) + " given " + str(count) + " times.")
 
 #print out the count for each mood specified
 sorted_moods = sorted(moods.items(), key=operator.itemgetter(1))
@@ -132,8 +164,5 @@ for i, (a,b) in enumerate(sorted_moods):
 	print("Mood of " + a + ' was given ' + str(b) + ' times.')
 
 #counts for mood and rating from last_date to last entry date.
-for mood, numTimes in weekMoods.items():
-	print(mood + '\t' + str(numTimes))
-
-for rating, numTimes in weekNums.items():
-	print(str(rating) + '\t' + str(numTimes))
+printWeekCounts(weekMoods)
+printWeekCounts(weekNums)

@@ -2,3 +2,4 @@
 *.json
 *.txt
 moodparse.properties
+mp.py
