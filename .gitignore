@@ -1,5 +1,6 @@
 *.dsv
 *.json
 *.txt
+*.DS_Store
 moodparse.properties
 mp.py
